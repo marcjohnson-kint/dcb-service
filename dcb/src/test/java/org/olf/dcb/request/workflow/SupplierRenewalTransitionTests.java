@@ -8,6 +8,7 @@ import static org.hamcrest.CoreMatchers.is;
 import static org.hamcrest.CoreMatchers.notNullValue;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.hasItem;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.TestInstance.Lifecycle.PER_CLASS;
 import static org.olf.dcb.core.model.FunctionalSettingType.TRIGGER_SUPPLIER_RENEWAL;
@@ -48,12 +49,14 @@ import org.olf.dcb.test.SupplierRequestsFixture;
 
 import jakarta.inject.Inject;
 import reactor.core.publisher.Mono;
+import services.k_int.interaction.sierra.CheckoutEntry;
 import services.k_int.interaction.sierra.SierraTestUtils;
 import services.k_int.test.mockserver.MockServerMicronautTest;
 
 @MockServerMicronautTest
 @TestInstance(PER_CLASS)
 class SupplierRenewalTransitionTests {
+	private static final String SUPPLYING_HOST_LMS_BASE_URL = "https://supplying-host-lms.com";
 
 	@Inject private SierraApiFixtureProvider sierraApiFixtureProvider;
 	@Inject private PatronFixture patronFixture;
@@ -78,12 +81,11 @@ class SupplierRenewalTransitionTests {
 		final var token = "test-token";
 		final var key = "key";
 		final var secret = "secret";
-		final var supplyingHostLmsBaseUrl = "https://supplying-host-lms.com";
 		final var borrowingHostLmsBaseUrl = "https://borrowing-host-lms.com";
 
 		hostLmsFixture.deleteAll();
 
-		SierraTestUtils.mockFor(mockServerClient, supplyingHostLmsBaseUrl)
+		SierraTestUtils.mockFor(mockServerClient, SUPPLYING_HOST_LMS_BASE_URL)
 			.setValidCredentials(key, secret, token, 3600);
 
 		SierraTestUtils.mockFor(mockServerClient, borrowingHostLmsBaseUrl)
@@ -93,7 +95,7 @@ class SupplierRenewalTransitionTests {
 			key, secret, borrowingHostLmsBaseUrl);
 
 		supplyingHostLms = hostLmsFixture.createSierraHostLms(SUPPLYING_HOST_LMS_CODE,
-			key, secret, supplyingHostLmsBaseUrl);
+			key, secret, SUPPLYING_HOST_LMS_BASE_URL);
 
 		sierraItemsAPIFixture = sierraApiFixtureProvider.items(mockServerClient);
 		sierraPatronsAPIFixture = sierraApiFixtureProvider.patrons(mockServerClient);
@@ -112,13 +114,23 @@ class SupplierRenewalTransitionTests {
 		// Arrange
 		consortiumFixture.createConsortiumWithFunctionalSetting(TRIGGER_SUPPLIER_RENEWAL, true);
 
-		final var patronRequest = definePatronRequest(LOANED, "LOANED", 1, 0);
+		final var patronRequest = definePatronRequest("365636", "4324324", LOANED, "LOANED", 1, 0);
 		final var existingPatron = patronRequest.getPatron();
 
-		defineSupplierRequest(patronRequest, "4324324", existingPatron);
+		final var localItemId = "4324324";
 
-		final var checkoutId = sierraItemsAPIFixture.checkoutsForItem("4324324");
-		sierraPatronsAPIFixture.mockRenewalSuccess(checkoutId);
+		defineSupplierRequest(patronRequest, existingPatron, "1182843", localItemId, "123456789");
+
+		String checkoutId = "3876367";
+
+		final var checkout = CheckoutEntry.builder()
+			.id(toSierraUrl("/patrons/checkouts/%s".formatted(checkoutId)))
+			.patron(toSierraUrl("/patrons/%s".formatted("1182843")))
+			.item(toSierraUrl("/items/%s".formatted(localItemId)))
+			.build();
+
+		sierraItemsAPIFixture.checkoutsForItem(localItemId, checkout);
+		sierraPatronsAPIFixture.mockRenewalSuccess(checkoutId, checkout);
 
 		// Act
 		final var updatedPatronRequest = supplierRenewal(patronRequest);
@@ -142,10 +154,10 @@ class SupplierRenewalTransitionTests {
 		// Arrange
 		consortiumFixture.createConsortiumWithFunctionalSetting(TRIGGER_SUPPLIER_RENEWAL, true);
 
-		final var patronRequest = definePatronRequest(LOANED, "LOANED", 1, 0);
+		final var patronRequest = definePatronRequest("365636", "4324324", LOANED, "LOANED", 1, 0);
 		final var existingPatron = patronRequest.getPatron();
 
-		defineSupplierRequest(patronRequest, "4324324", existingPatron);
+		defineSupplierRequest(patronRequest, existingPatron, "1182843", "4324324", "123456789");
 
 		sierraItemsAPIFixture.checkoutsForItemWithNoRecordsFound("4324324");
 
@@ -169,7 +181,7 @@ class SupplierRenewalTransitionTests {
 		// Arrange
 		consortiumFixture.createConsortiumWithFunctionalSetting(TRIGGER_SUPPLIER_RENEWAL, false);
 
-		final var patronRequest = definePatronRequest(LOANED, "LOANED", 1, 0);
+		final var patronRequest = definePatronRequest("365636", "4324324", LOANED, "LOANED", 1, 0);
 
 		// Act
 		final var updatedPatronRequest = supplierRenewal(patronRequest);
@@ -201,7 +213,7 @@ class SupplierRenewalTransitionTests {
 		// Arrange
 		consortiumFixture.createConsortiumWithFunctionalSetting(TRIGGER_SUPPLIER_RENEWAL, false);
 
-		final var patronRequest = definePatronRequest(LOANED, "LOANED", 1, 0);
+		final var patronRequest = definePatronRequest("365636", "4324324", LOANED, "LOANED", 1, 0);
 
 		// Act
 
@@ -218,7 +230,7 @@ class SupplierRenewalTransitionTests {
 		// Arrange
 		consortiumFixture.createConsortiumWithFunctionalSetting(TRIGGER_SUPPLIER_RENEWAL, true);
 
-		final var patronRequest = definePatronRequest(LOANED, "LOANED", null, 0);
+		final var patronRequest = definePatronRequest("365636", "4324324", LOANED, "LOANED", null, 0);
 
 		// Act
 		final var exception = assertThrows(RuntimeException.class, () -> supplierRenewal(patronRequest));
@@ -236,7 +248,7 @@ class SupplierRenewalTransitionTests {
 		// Arrange
 		consortiumFixture.createConsortiumWithFunctionalSetting(TRIGGER_SUPPLIER_RENEWAL, true);
 
-		final var patronRequest = definePatronRequest(CANCELLED, "LOANED", 1, 0);
+		final var patronRequest = definePatronRequest("365636", "4324324", CANCELLED, "LOANED", 1, 0);
 
 		// Act
 		final var exception = assertThrows(RuntimeException.class, () -> supplierRenewal(patronRequest));
@@ -254,7 +266,7 @@ class SupplierRenewalTransitionTests {
 		// Arrange
 		consortiumFixture.createConsortiumWithFunctionalSetting(TRIGGER_SUPPLIER_RENEWAL, true);
 
-		final var patronRequest = definePatronRequest(CANCELLED, "TRANSIT", 1, 0);
+		final var patronRequest = definePatronRequest("365636", "4324324", CANCELLED, "TRANSIT", 1, 0);
 
 		// Act
 		final var exception = assertThrows(RuntimeException.class, () -> supplierRenewal(patronRequest));
@@ -272,7 +284,7 @@ class SupplierRenewalTransitionTests {
 		// Arrange
 		consortiumFixture.createConsortiumWithFunctionalSetting(TRIGGER_SUPPLIER_RENEWAL, true);
 
-		final var patronRequest = definePatronRequest(CANCELLED, "LOANED", 0, 0);
+		final var patronRequest = definePatronRequest("365636", "4324324", CANCELLED, "LOANED", 0, 0);
 
 		// Act
 		final var exception = assertThrows(RuntimeException.class, () -> supplierRenewal(patronRequest));
@@ -326,15 +338,15 @@ class SupplierRenewalTransitionTests {
 			.thenReturn(patronRequest));
 	}
 
-	private PatronRequest definePatronRequest(PatronRequest.Status status, String localItemStatus,
-			Integer localRenewalCount, Integer renewalCount) {
+	private PatronRequest definePatronRequest(String localPatronId, String localItemId, PatronRequest.Status status,
+		String localItemStatus, Integer localRenewalCount, Integer renewalCount) {
 
-		final var patron = patronFixture.definePatron("365636", "home-library",
+		final var patron = patronFixture.definePatron(localPatronId, "home-library",
 			borrowingHostLms, null);
 
 		final var patronRequest = PatronRequest.builder()
 			.id(randomUUID())
-			.localItemId("4324324")
+			.localItemId(localItemId)
 			.localItemStatus(localItemStatus)
 			.localRenewalCount(localRenewalCount)
 			.renewalCount(renewalCount)
@@ -351,18 +363,27 @@ class SupplierRenewalTransitionTests {
 		return patronRequest;
 	}
 
-	private SupplierRequest defineSupplierRequest(PatronRequest patronRequest, String localItemId, Patron existingPatron) {
+	private void defineSupplierRequest(PatronRequest patronRequest, Patron existingPatron, String localPatronId,
+		String localItemId, String localItemBarcode) {
 
 		final var patronIdentity = patronFixture.saveIdentityAndReturn(existingPatron, supplyingHostLms,
-			"1182843", false, "-", SUPPLYING_HOST_LMS_CODE, null);
+			localPatronId, false, "-", SUPPLYING_HOST_LMS_CODE, null);
 
-		return supplierRequestsFixture.saveSupplierRequest(SupplierRequest.builder()
-				.id(UUID.randomUUID())
-				.patronRequest(patronRequest)
-				.hostLmsCode(SUPPLYING_HOST_LMS_CODE)
-				.localItemId(localItemId)
-				.localItemBarcode("123456789")
-				.virtualIdentity(patronIdentity)
-				.build());
+		supplierRequestsFixture.saveSupplierRequest(SupplierRequest.builder()
+			.id(UUID.randomUUID())
+			.patronRequest(patronRequest)
+			.hostLmsCode(SUPPLYING_HOST_LMS_CODE)
+			.localItemId(localItemId)
+			.localItemBarcode(localItemBarcode)
+			.virtualIdentity(patronIdentity)
+			.build());
+	}
+
+	private static String toSierraUrl(String subPath) {
+		return SUPPLYING_HOST_LMS_BASE_URL + toSierraApiPath(subPath);
+	}
+
+	private static String toSierraApiPath(String subPath) {
+		return "/iii/sierra-api/v6" + subPath;
 	}
 }

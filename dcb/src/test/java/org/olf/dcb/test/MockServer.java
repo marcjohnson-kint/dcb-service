@@ -83,10 +83,6 @@ public class MockServer {
 		client.when(request, times).respond(response);
 	}
 
-	public void mock(HttpRequest request, String jsonResourcePath, Times times) {
-		mock(request, okJson(getResource(jsonResourcePath)), times);
-	}
-
 	public void replaceMock(HttpRequest request, HttpResponse response, Times times) {
 		// Remove previous expectations, sometimes used when there is no way to match request more specifically
 		client.clear(request);

@@ -1,7 +1,7 @@
 package org.olf.dcb.core.interaction.sierra;
 
-import static org.hamcrest.CoreMatchers.allOf;
-import static org.hamcrest.CoreMatchers.is;
+import static java.util.Collections.emptyList;
+import static org.hamcrest.CoreMatchers.*;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.hasProperty;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -14,7 +14,6 @@ import static org.olf.dcb.test.matchers.interaction.HttpResponseProblemMatchers.
 import static org.olf.dcb.test.matchers.interaction.HttpResponseProblemMatchers.hasRequestUrl;
 import static org.olf.dcb.test.matchers.interaction.HttpResponseProblemMatchers.hasResponseStatusCode;
 
-import org.hamcrest.CoreMatchers;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestInstance;
@@ -25,14 +24,18 @@ import org.zalando.problem.ThrowableProblem;
 
 import jakarta.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
+import services.k_int.interaction.sierra.CheckoutEntry;
 import services.k_int.interaction.sierra.SierraTestUtils;
 import services.k_int.test.mockserver.MockServerMicronautTest;
+
+import java.util.List;
 
 @Slf4j
 @MockServerMicronautTest
 @TestInstance(PER_CLASS)
 class SierraHostLmsClientRenewalTests {
 	private static final String CIRCULATING_HOST_LMS_CODE = "sierra-item-circulating";
+	private static final String BASE_URL = "https://renewal-api-tests.com";
 
 	@Inject private SierraApiFixtureProvider sierraApiFixtureProvider;
 	@Inject private HostLmsFixture hostLmsFixture;
@@ -43,7 +46,6 @@ class SierraHostLmsClientRenewalTests {
 	@BeforeAll
 	public void beforeAll(MockServerClient mockServerClient) {
 		final String TOKEN = "test-token";
-		final String BASE_URL = "https://renewal-api-tests.com";
 		final String KEY = "renewal-key";
 		final String SECRET = "renewal-secret";
 
@@ -71,12 +73,23 @@ class SierraHostLmsClientRenewalTests {
 		final var localPatronBarcode = "9821734";
 
 		final var hostLmsRenewal = HostLmsRenewal.builder()
-			.localItemId(localItemId).localPatronId(localPatronId)
-			.localItemBarcode(localItemBarcode).localPatronBarcode(localPatronBarcode).build();
+			.localItemId(localItemId)
+			.localPatronId(localPatronId)
+			.localItemBarcode(localItemBarcode)
+			.localPatronBarcode(localPatronBarcode)
+			.build();
 
-		final var checkoutID = sierraItemsAPIFixture.checkoutsForItem(localItemId);
+		final var checkoutId = "4983755";
 
-		sierraPatronsAPIFixture.mockRenewalSuccess( checkoutID );
+		final var checkout = CheckoutEntry.builder()
+			.id(toSierraUrl("/patrons/checkouts/%s".formatted(checkoutId)))
+			.patron(toSierraUrl("/patrons/%s".formatted(localPatronId)))
+			.item(toSierraUrl("/items/%s".formatted(localItemId)))
+			.barcode(localItemBarcode)
+			.build();
+
+		sierraItemsAPIFixture.checkoutsForItem(localItemId, checkout);
+		sierraPatronsAPIFixture.mockRenewalSuccess(checkoutId, checkout);
 
 		// Act
 		final var client = hostLmsFixture.createClient(CIRCULATING_HOST_LMS_CODE);
@@ -84,28 +97,31 @@ class SierraHostLmsClientRenewalTests {
 		final var response = singleValueFrom(client.renew(hostLmsRenewal));
 
 		// Assert
-		assertThat(response, is(CoreMatchers.notNullValue()));
+		assertThat(response, is(notNullValue()));
 		assertThat(response, allOf(
-			hasProperty("localItemId", is("10942942")),
-			hasProperty("localPatronId", is("1182843")),
-			hasProperty("localItemBarcode", is("98030205213515")),
-			hasProperty("localPatronBarcode", is("9821734"))
+			hasProperty("localItemId", is(localItemId)),
+			hasProperty("localPatronId", is(localPatronId)),
+			hasProperty("localItemBarcode", is(localItemBarcode)),
+			hasProperty("localPatronBarcode", is(localPatronBarcode))
 		));
 	}
 
 	@Test
 	void shouldReturnProblemWhenNoCheckoutRecordsAreFound() {
 		// Arrange
-		final var localItemId = "10942942";
-		final var localPatronId = "1182843";
-		final var localItemBarcode = "98030205213515";
-		final var localPatronBarcode = "9821734";
+		final var itemId = "10942942";
+		final var patronId = "1182843";
+		final var itemBarcode = "98030205213515";
+		final var patronBarcode = "9821734";
 
 		final var hostLmsRenewal = HostLmsRenewal.builder()
-			.localItemId(localItemId).localPatronId(localPatronId)
-			.localItemBarcode(localItemBarcode).localPatronBarcode(localPatronBarcode).build();
+			.localItemId(itemId)
+			.localPatronId(patronId)
+			.localItemBarcode(itemBarcode)
+			.localPatronBarcode(patronBarcode)
+			.build();
 
-		sierraItemsAPIFixture.checkoutsForItemWithNoPatronEntries(localItemId);
+		sierraItemsAPIFixture.checkoutsForItem(itemId, emptyList());
 
 		// Act
 		final var client = hostLmsFixture.createClient(CIRCULATING_HOST_LMS_CODE);
@@ -123,17 +139,24 @@ class SierraHostLmsClientRenewalTests {
 	@Test
 	void shouldReturnProblemWhenNoCheckoutsMatchPatronId() {
 		// Arrange
-		final var localItemId = "10942942";
-		// ensuring the local patron id does not match the mock response
-		final var localPatronId = "34273984";
-		final var localItemBarcode = "98030205213515";
-		final var localPatronBarcode = "9821734";
+		final var itemId = "10942942";
+		final var patronId = "34273984";
+		final var itemBarcode = "98030205213515";
+		final var patronBarcode = "9821734";
 
 		final var hostLmsRenewal = HostLmsRenewal.builder()
-			.localItemId(localItemId).localPatronId(localPatronId)
-			.localItemBarcode(localItemBarcode).localPatronBarcode(localPatronBarcode).build();
+			.localItemId(itemId)
+			.localPatronId(patronId)
+			.localItemBarcode(itemBarcode)
+			.localPatronBarcode(patronBarcode)
+			.build();
 
-		sierraItemsAPIFixture.checkoutsForItem(localItemId);
+		sierraItemsAPIFixture.checkoutsForItem(itemId,
+			CheckoutEntry.builder()
+				.id("3857476")
+				// Use different patron id
+				.patron("97858345")
+				.build());
 
 		// Act
 		final var client = hostLmsFixture.createClient(CIRCULATING_HOST_LMS_CODE);
@@ -151,16 +174,31 @@ class SierraHostLmsClientRenewalTests {
 	@Test
 	void shouldReturnProblemWhenMultipleCheckoutsMatchPatronId() {
 		// Arrange
-		final var localItemId = "10942942";
-		final var localPatronId = "1182843";
-		final var localItemBarcode = "98030205213515";
-		final var localPatronBarcode = "9821734";
+		final var itemId = "10942942";
+		final var patronId = "1182843";
+		final var itemBarcode = "98030205213515";
+		final var patronBarcode = "9821734";
 
 		final var hostLmsRenewal = HostLmsRenewal.builder()
-			.localItemId(localItemId).localPatronId(localPatronId)
-			.localItemBarcode(localItemBarcode).localPatronBarcode(localPatronBarcode).build();
+			.localItemId(itemId)
+			.localPatronId(patronId)
+			.localItemBarcode(itemBarcode)
+			.localPatronBarcode(patronBarcode)
+			.build();
 
-		sierraItemsAPIFixture.checkoutsForItemWithMultiplePatronEntries(localItemId);
+		// With different checkout and item IDs
+		sierraItemsAPIFixture.checkoutsForItem(itemId, List.of(
+			CheckoutEntry.builder()
+				.id("46365756")
+				.item("4636566")
+				.patron(patronId)
+				.build(),
+			CheckoutEntry.builder()
+				.id("2726588")
+				.item("87367573")
+				.patron(patronId)
+				.build()
+		));
 
 		// Act
 		final var client = hostLmsFixture.createClient(CIRCULATING_HOST_LMS_CODE);
@@ -178,16 +216,19 @@ class SierraHostLmsClientRenewalTests {
 	@Test
 	void shouldReturnProblemWhenGetCheckoutsFails() {
 		// Arrange
-		final var localItemId = "10942942";
-		final var localPatronId = "1182843";
-		final var localItemBarcode = "98030205213515";
-		final var localPatronBarcode = "9821734";
+		final var itemId = "10942942";
+		final var patronId = "1182843";
+		final var itemBarcode = "98030205213515";
+		final var patronBarcode = "9821734";
 
 		final var hostLmsRenewal = HostLmsRenewal.builder()
-			.localItemId(localItemId).localPatronId(localPatronId)
-			.localItemBarcode(localItemBarcode).localPatronBarcode(localPatronBarcode).build();
+			.localItemId(itemId)
+			.localPatronId(patronId)
+			.localItemBarcode(itemBarcode)
+			.localPatronBarcode(patronBarcode)
+			.build();
 
-		sierraItemsAPIFixture.checkoutsForItemWithNoRecordsFound(localItemId);
+		sierraItemsAPIFixture.checkoutsForItemWithNoRecordsFound(itemId);
 
 		// Act
 		final var client = hostLmsFixture.createClient(CIRCULATING_HOST_LMS_CODE);
@@ -197,14 +238,14 @@ class SierraHostLmsClientRenewalTests {
 
 		// Assert
 		assertThat(problem, allOf(
-			hasMessageForRequest("GET", "/iii/sierra-api/v6/items/10942942/checkouts"),
+			hasMessageForRequest("GET", toSierraApiPath("/items/%s/checkouts".formatted(itemId))),
 			hasResponseStatusCode(404),
 			hasJsonResponseBodyProperty("code", 107),
 			hasJsonResponseBodyProperty("httpStatus", 404),
 			hasJsonResponseBodyProperty("name", "Record not found"),
 			hasJsonResponseBodyProperty("specificCode", 0),
 			hasRequestMethod("GET"),
-			hasRequestUrl("https://renewal-api-tests.com/iii/sierra-api/v6/items/10942942/checkouts"),
+			hasRequestUrl(toSierraUrl("/items/%s/checkouts".formatted(itemId))),
 			hasHttpVersion("HTTP_1_1")
 		));
 	}
@@ -212,18 +253,27 @@ class SierraHostLmsClientRenewalTests {
 	@Test
 	void shouldReturnProblemWhenPostRenewalFails() {
 		// Arrange
-		final var localItemId = "10942942";
-		final var localPatronId = "1182843";
-		final var localItemBarcode = "98030205213515";
-		final var localPatronBarcode = "9821734";
+		final var itemId = "10942942";
+		final var patronId = "1182843";
+		final var itemBarcode = "98030205213515";
+		final var patronBarcode = "9821734";
 
 		final var hostLmsRenewal = HostLmsRenewal.builder()
-			.localItemId(localItemId).localPatronId(localPatronId)
-			.localItemBarcode(localItemBarcode).localPatronBarcode(localPatronBarcode).build();
+			.localItemId(itemId)
+			.localPatronId(patronId)
+			.localItemBarcode(itemBarcode)
+			.localPatronBarcode(patronBarcode)
+			.build();
 
-		final var checkoutID = sierraItemsAPIFixture.checkoutsForItem(localItemId);
+		final var checkoutId = "2978569";
 
-		sierraPatronsAPIFixture.mockRenewalNoRecordsFound( checkoutID );
+		sierraItemsAPIFixture.checkoutsForItem(itemId,
+			CheckoutEntry.builder()
+				.id(checkoutId)
+				.patron(patronId)
+				.build());
+
+		sierraPatronsAPIFixture.mockRenewalNoRecordsFound(checkoutId);
 
 		// Act
 		final var client = hostLmsFixture.createClient(CIRCULATING_HOST_LMS_CODE);
@@ -233,15 +283,23 @@ class SierraHostLmsClientRenewalTests {
 
 		// Assert
 		assertThat(problem, allOf(
-			hasMessageForRequest("POST", "/iii/sierra-api/v6/patrons/checkouts/1811242/renewal"),
+			hasMessageForRequest("POST", toSierraApiPath("/patrons/checkouts/%s/renewal".formatted(checkoutId))),
 			hasResponseStatusCode(404),
 			hasJsonResponseBodyProperty("code", 107),
 			hasJsonResponseBodyProperty("httpStatus", 404),
 			hasJsonResponseBodyProperty("name", "Record not found"),
 			hasJsonResponseBodyProperty("specificCode", 0),
 			hasRequestMethod("POST"),
-			hasRequestUrl("https://renewal-api-tests.com/iii/sierra-api/v6/patrons/checkouts/1811242/renewal"),
+			hasRequestUrl(toSierraUrl("/patrons/checkouts/%s/renewal".formatted(checkoutId))),
 			hasHttpVersion("HTTP_1_1")
 		));
+	}
+
+	private static String toSierraUrl(String subPath) {
+		return BASE_URL + toSierraApiPath(subPath);
+	}
+
+	private static String toSierraApiPath(String subPath) {
+		return "/iii/sierra-api/v6" + subPath;
 	}
 }

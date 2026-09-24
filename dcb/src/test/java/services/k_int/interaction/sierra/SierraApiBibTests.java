@@ -20,6 +20,7 @@ import org.olf.dcb.test.HostLmsFixture;
 import jakarta.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 import services.k_int.interaction.sierra.bibs.BibPatch;
+import services.k_int.interaction.sierra.bibs.BibResult;
 import services.k_int.interaction.sierra.bibs.BibResultSet;
 import services.k_int.test.mockserver.MockServerMicronautTest;
 
@@ -56,9 +57,18 @@ class SierraApiBibTests {
 	}
 
 	@Test
-	void testBibsGET() {
+	void shouldGetSinglePageOfBibs() {
 		// Arrange
-		sierraBibsAPIFixture.createGetBibsMockWithQueryStringParameters();
+		sierraBibsAPIFixture.createGetBibsMockWithQueryStringParameters(
+			BibResult.builder()
+				.id("1000002")
+				.build(),
+			BibResult.builder()
+				.id("1000003")
+				.build(),
+			BibResult.builder()
+				.id("1000004")
+				.build());
 
 		final var sierraApiClient = hostLmsFixture.createLowLevelSierraClient(HOST_LMS_CODE);
 
@@ -77,7 +87,7 @@ class SierraApiBibTests {
 	}
 
 	@Test
-	void testBibsPOST() {
+	void shouldCreateBib() {
 		// Arrange
 		final var fixedFields = Map.of(31, FixedField.builder().label("suppress").value("n").build());
 

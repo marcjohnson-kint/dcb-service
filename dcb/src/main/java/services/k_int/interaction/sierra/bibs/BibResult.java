@@ -6,6 +6,7 @@ import java.time.LocalDateTime;
 import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.NotNull;
 
+import lombok.Builder;
 import org.marc4j.marc.Record;
 
 import com.fasterxml.jackson.annotation.JsonFormat;
@@ -18,6 +19,7 @@ import java.util.List;
 import services.k_int.interaction.sierra.FixedField;
 import services.k_int.interaction.sierra.VarField;
 
+@Builder
 @Serdeable
 public record BibResult(
 	@NotEmpty String id,
