@@ -34,6 +34,7 @@ import io.micronaut.serde.annotation.Serdeable;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
+import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
 import reactor.core.publisher.Mono;
 import reactor.function.TupleUtils;
@@ -105,6 +106,7 @@ public class SupplyingAgencyService {
 		DELETE("CLEAN UP", "Delete supplier hold : Failed"),
 		CANCEL("CANCEL", "Cancel supplier hold : Failed");
 
+		@Getter
 		private final String description;
 		private final String failureMessage;
 
@@ -112,15 +114,10 @@ public class SupplyingAgencyService {
 			this.description = description;
 			this.failureMessage = failureMessage;
 		}
-
-		public String getDescription() {
-			return description;
-		}
 	}
 
 	private Mono<RequestWorkflowContext> handleSupplierHoldOperation(
-		RequestWorkflowContext context,
-		HoldOperation operation) {
+		RequestWorkflowContext context, HoldOperation operation) {
 
 		final var supplierRequest = getValueOrNull(context, RequestWorkflowContext::getSupplierRequest);
 		final var patronRequest = getValueOrNull(context, RequestWorkflowContext::getPatronRequest);
@@ -128,20 +125,22 @@ public class SupplyingAgencyService {
 		final var localRequestId = getValueOrNull(supplierRequest, SupplierRequest::getLocalId);
 		final var supplierPatronId = getValueOrNull(supplierRequest, SupplierRequest::getVirtualIdentity, PatronIdentity::getLocalId);
 
-		String operationDescription = operation.getDescription();
+		final var operationDescription = operation.getDescription();
+
 		log.info("WORKFLOW attempting to {} local supplier hold :: {}", operationDescription, supplierRequest);
 
 		if (hostLmsCode == null || localRequestId == null) {
-
 			log.error("WORKFLOW could not {} supplier hold :: hostLmsCode={} localRequestId={}",
 				operationDescription, hostLmsCode, localRequestId);
 
-			final var message = operationDescription + " supplier hold : Skipped";
 			final var auditData = new HashMap<String, Object>();
+
 			auditData.put("WORKFLOW could not " + operationDescription + " supplier hold because a required value was null", Map.of(
 				"hostLmsCode", getValue(hostLmsCode, "No value present"),
 				"localRequestId", getValue(localRequestId, "No value present")
 			));
+
+			final var message = operationDescription + " supplier hold : Skipped";
 
 			return patronRequestAuditService.addAuditEntry(patronRequest, message, auditData)
 				.flatMap(audit -> Mono.just(context));
