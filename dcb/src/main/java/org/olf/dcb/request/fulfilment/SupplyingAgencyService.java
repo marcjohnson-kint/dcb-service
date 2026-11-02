@@ -22,12 +22,9 @@ import org.olf.dcb.core.model.PatronIdentity;
 import org.olf.dcb.core.model.PatronRequest;
 import org.olf.dcb.core.model.SupplierRequest;
 import org.olf.dcb.request.resolution.SupplierRequestService;
-import org.olf.dcb.request.workflow.PatronRequestWorkflowService;
-import org.olf.dcb.storage.AgencyRepository;
 import org.zalando.problem.Problem;
 import org.zalando.problem.ThrowableProblem;
 
-import io.micronaut.context.BeanProvider;
 import io.micronaut.context.annotation.Prototype;
 import io.micronaut.core.annotation.Nullable;
 import io.micronaut.serde.annotation.Serdeable;
@@ -37,13 +34,13 @@ import lombok.Data;
 import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
 import reactor.core.publisher.Mono;
-import reactor.function.TupleUtils;
 import reactor.util.function.Tuple2;
 import reactor.util.function.Tuples;
 
 
 @Slf4j
 @Prototype
+@AllArgsConstructor
 public class SupplyingAgencyService {
 	private static final URI ERR0010 = URI.create(
 		"https://openlibraryfoundation.atlassian.net/wiki/spaces/DCB/pages/2738356304/0010+-+Error+in+place+request+at+supplier");
@@ -54,27 +51,6 @@ public class SupplyingAgencyService {
 	private final PatronTypeService patronTypeService;
 	private final RequestWorkflowContextHelper requestWorkflowContextHelper;
 	private final PatronRequestAuditService patronRequestAuditService;
-	private final AgencyRepository agencyRepository;
-
-	// Provider to prevent circular reference exception by allowing lazy access to this singleton.
-	private final BeanProvider<PatronRequestWorkflowService> patronRequestWorkflowServiceProvider;
-
-	public SupplyingAgencyService(HostLmsService hostLmsService,
-		SupplierRequestService supplierRequestService, PatronService patronService,
-		PatronTypeService patronTypeService,
-		BeanProvider<PatronRequestWorkflowService> patronRequestWorkflowServiceProvider,
-		RequestWorkflowContextHelper requestWorkflowContextHelper,
-		PatronRequestAuditService patronRequestAuditService, AgencyRepository agencyRepository) {
-
-		this.hostLmsService = hostLmsService;
-		this.supplierRequestService = supplierRequestService;
-		this.patronService = patronService;
-		this.patronTypeService = patronTypeService;
-		this.agencyRepository = agencyRepository;
-		this.patronRequestWorkflowServiceProvider = patronRequestWorkflowServiceProvider;
-		this.requestWorkflowContextHelper = requestWorkflowContextHelper;
-		this.patronRequestAuditService = patronRequestAuditService;
-	}
 
 	/** Places the hold; {@link SupplierPlacementGate} has already decided this supplier may be placed at. */
 	public Mono<PatronRequest> placePatronRequestAtSupplyingAgency(PatronRequest patronRequest) {
