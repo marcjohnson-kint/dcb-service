@@ -143,7 +143,7 @@ public class SupplyingAgencyService {
 			final var message = operationDescription + " supplier hold : Skipped";
 
 			return patronRequestAuditService.addAuditEntry(patronRequest, message, auditData)
-				.flatMap(audit -> Mono.just(context));
+				.thenReturn(context);
 		}
 
 		return hostLmsService.getClientFor(hostLmsCode)
