@@ -15,6 +15,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.function.Function;
 
+import org.jspecify.annotations.NonNull;
 import org.olf.dcb.core.HostLmsService;
 import org.olf.dcb.core.interaction.*;
 import org.olf.dcb.core.model.NoHomeIdentityException;
@@ -127,46 +128,9 @@ public class SupplyingAgencyService {
 			.flatMap(client -> {
 				switch (operation) {
 					case DELETE:
-						final var virtualIdentity = getValueOrNull(context, RequestWorkflowContext::getPatronVirtualIdentity);
-						final var virtualLocalId = virtualIdentity.getLocalId();
-						log.debug("Deleting hold - Supplier patron ID {} and virtual local ID{}", supplierPatronId, virtualLocalId);
-						return client.deleteHold(DeleteCommand.builder()
-							.requestId(localRequestId)
-							// If the original supplier patron ID is not available (Polaris), use the virtual patron's local ID to make sure we delete the hold.
-							.patronId(supplierPatronId ==  null || supplierPatronId.isBlank() ? virtualLocalId : supplierPatronId)
-							.build())	.flatMap(deleteResult -> {
-							// There are different success variations that we need to handle for some LMS
-							// i.e. if we've not been able to delete the hold but we successfully cancelled it instead, that's worth noting
-							// Polaris is the primary example: it doesn't always let us delete the hold and then it stops us deleting the item
-							final String message;
-							if ("OK_CANCELLED".equals(deleteResult)) {
-								message = "Delete supplier hold request : Success (Fallback Cancel)";
-							} else if ("OK_DELETED".equals(deleteResult)) {
-								message = "Delete supplier hold request : Success (Deleted)";
-							}
-							else if ("OK_CLOSED".equals(deleteResult)) {
-									message = "Delete supplier hold request: mod-dcb transaction also closed";
-							} else {
-								// For the standard "OK" for systems where we don't need to have the fallback.
-								// This is the most common outcome.
-								message = "Delete supplier hold request : Success";
-							}
-							final var auditData = new HashMap<String, Object>();
-							auditData.put("localRequestId", localRequestId);
-							auditData.put("deleteResult", deleteResult);
-							return patronRequestAuditService.addAuditEntry(patronRequest, message, auditData)
-								.thenReturn(deleteResult);
-						});
+						return deleteRequest(context, client, supplierPatronId, localRequestId, patronRequest);
 					case CANCEL:
-						// For cancel operation, we need additional parameters
-						final var localItemId = getValueOrNull(supplierRequest, SupplierRequest::getLocalItemId);
-						final var virtualPatronLocalID = getValueOrNull(supplierRequest, SupplierRequest::getVirtualIdentity, PatronIdentity::getLocalId);
-
-						return client.cancelHoldRequest(CancelHoldRequestParameters.builder()
-							.localRequestId(localRequestId)
-							.localItemId(localItemId)
-							.patronId(virtualPatronLocalID)
-							.build());
+						return cancelRequest(client, supplierRequest, localRequestId);
 					default:
 						return Mono.error(new IllegalArgumentException("Unsupported operation: " + operation));
 				}
@@ -176,6 +140,53 @@ public class SupplyingAgencyService {
 			// Genuine error we didn't account for
 			.onErrorResume(logAndReturnErrorString(operation.failureMessage, context))
 			.thenReturn(context);
+	}
+
+	private Mono<String> deleteRequest(RequestWorkflowContext context, HostLmsClient client,
+		String supplierPatronId, String localRequestId, PatronRequest patronRequest) {
+		final var virtualIdentity = getValueOrNull(context, RequestWorkflowContext::getPatronVirtualIdentity);
+		final var virtualLocalId = virtualIdentity.getLocalId();
+		log.debug("Deleting hold - Supplier patron ID {} and virtual local ID{}", supplierPatronId, virtualLocalId);
+		return client.deleteHold(DeleteCommand.builder()
+			.requestId(localRequestId)
+			// If the original supplier patron ID is not available (Polaris), use the virtual patron's local ID to make sure we delete the hold.
+			.patronId(
+				supplierPatronId == null || supplierPatronId.isBlank() ? virtualLocalId : supplierPatronId)
+			.build()).flatMap(deleteResult -> {
+			// There are different success variations that we need to handle for some LMS
+			// i.e. if we've not been able to delete the hold but we successfully cancelled it instead, that's worth noting
+			// Polaris is the primary example: it doesn't always let us delete the hold and then it stops us deleting the item
+			final String message;
+			if ("OK_CANCELLED".equals(deleteResult)) {
+				message = "Delete supplier hold request : Success (Fallback Cancel)";
+			} else if ("OK_DELETED".equals(deleteResult)) {
+				message = "Delete supplier hold request : Success (Deleted)";
+			} else if ("OK_CLOSED".equals(deleteResult)) {
+				message = "Delete supplier hold request: mod-dcb transaction also closed";
+			} else {
+				// For the standard "OK" for systems where we don't need to have the fallback.
+				// This is the most common outcome.
+				message = "Delete supplier hold request : Success";
+			}
+			final var auditData = new HashMap<String, Object>();
+			auditData.put("localRequestId", localRequestId);
+			auditData.put("deleteResult", deleteResult);
+			return patronRequestAuditService.addAuditEntry(patronRequest, message, auditData)
+				.thenReturn(deleteResult);
+		});
+	}
+
+	private static Mono<String> cancelRequest(HostLmsClient client, SupplierRequest supplierRequest,
+		String localRequestId) {
+		// For cancel operation, we need additional parameters
+		final var localItemId = getValueOrNull(supplierRequest, SupplierRequest::getLocalItemId);
+		final var virtualPatronLocalID = getValueOrNull(supplierRequest, SupplierRequest::getVirtualIdentity, PatronIdentity::getLocalId);
+
+		return client.cancelHoldRequest(CancelHoldRequestParameters.builder()
+			.localRequestId(localRequestId)
+			.localItemId(localItemId)
+			.patronId(virtualPatronLocalID)
+			.build());
 	}
 
 	public Mono<RequestWorkflowContext> cleanUp(RequestWorkflowContext context) {
