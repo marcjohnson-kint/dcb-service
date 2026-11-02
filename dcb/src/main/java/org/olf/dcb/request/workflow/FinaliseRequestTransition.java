@@ -11,7 +11,6 @@ import static org.olf.dcb.utils.PropertyAccessUtils.getValueOrNull;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Optional;
-import java.util.function.Function;
 
 import org.olf.dcb.core.interaction.HostLmsItem;
 import org.olf.dcb.core.interaction.HostLmsRequest;
@@ -19,6 +18,7 @@ import org.olf.dcb.core.interaction.Patron;
 import org.olf.dcb.core.model.PatronIdentity;
 import org.olf.dcb.core.model.PatronRequest;
 import org.olf.dcb.core.model.PatronRequest.Status;
+import org.olf.dcb.core.model.PatronRequestAudit;
 import org.olf.dcb.core.model.SupplierRequest;
 import org.olf.dcb.request.fulfilment.BorrowingAgencyService;
 import org.olf.dcb.request.fulfilment.PatronRequestAuditService;
@@ -29,11 +29,13 @@ import org.olf.dcb.statemodel.DCBGuardCondition;
 import org.olf.dcb.statemodel.DCBTransitionResult;
 
 import io.micronaut.context.annotation.Prototype;
+import lombok.AllArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import reactor.core.publisher.Mono;
 
 @Slf4j
 @Prototype
+@AllArgsConstructor
 public class FinaliseRequestTransition implements PatronRequestStateTransition {
 	private final PatronRequestAuditService patronRequestAuditService;
 	private final SupplyingAgencyService supplyingAgencyService;
@@ -43,17 +45,6 @@ public class FinaliseRequestTransition implements PatronRequestStateTransition {
 
 	private static final List<Status> possibleSourceStatus = List.of(COMPLETED,
 		CANCELLED, NO_ITEMS_SELECTABLE_AT_ANY_AGENCY);
-
-	public FinaliseRequestTransition(PatronRequestAuditService patronRequestAuditService,
-		SupplyingAgencyService supplyingAgencyService, BorrowingAgencyService borrowingAgencyService,
-		PickupAgencyService pickupAgencyService, CleanupService cleanupService) {
-
-		this.patronRequestAuditService = patronRequestAuditService;
-		this.supplyingAgencyService = supplyingAgencyService;
-		this.borrowingAgencyService = borrowingAgencyService;
-		this.pickupAgencyService = pickupAgencyService;
-		this.cleanupService = cleanupService;
-	}
 
 	/**
 	 * Attempts to transition the patron request to the next state,
@@ -69,23 +60,18 @@ public class FinaliseRequestTransition implements PatronRequestStateTransition {
 
 		return cleanupService.cleanup(ctx)
 			.then(Mono.just(patronRequest.setStatus(FINALISED)))
-			.flatMap(auditStateOfRecordsAfterCleanUp(ctx));
+			.then(auditStateOfRecordsAfterCleanUp(ctx));
 	}
 
-	private Function<PatronRequest, Mono<RequestWorkflowContext>> auditStateOfRecordsAfterCleanUp(
-		RequestWorkflowContext ctx) {
+	private Mono<RequestWorkflowContext> auditStateOfRecordsAfterCleanUp(RequestWorkflowContext ctx) {
+		var auditData = new HashMap<String, Object>();
 
-		return patronRequest -> {
-
-			var auditData = new HashMap<String, Object>();
-
-			return fetchVirtualItem(ctx, auditData)
-				.flatMap(data -> fetchVirtualPatron(ctx, data))
-				.flatMap(data -> fetchVirtualRequest(ctx, data))
-				.flatMap(data -> fetchPickupData(ctx, data))
-				.flatMap(data -> patronRequestAuditService.addAuditEntry(ctx.getPatronRequest(), "Clean up result", data))
-				.thenReturn(ctx);
-		};
+		return fetchVirtualItem(ctx, auditData)
+			.flatMap(data -> fetchVirtualPatron(ctx, data))
+			.flatMap(data -> fetchVirtualRequest(ctx, data))
+			.flatMap(data -> fetchPickupData(ctx, data))
+			.flatMap(data -> writeAudit(ctx, data))
+			.thenReturn(ctx);
 	}
 
 	private Mono<HashMap<String, Object>> fetchPickupData(RequestWorkflowContext ctx,
@@ -149,6 +135,10 @@ public class FinaliseRequestTransition implements PatronRequestStateTransition {
 			.map(item -> putAuditData(auditData, "VirtualItem", getValueOrNull(item, HostLmsItem::toString)))
 			.onErrorResume(error -> auditThrowableMonoWrap(auditData, "VirtualItem", error))
 			.thenReturn(auditData);
+	}
+
+	private Mono<PatronRequestAudit> writeAudit(RequestWorkflowContext ctx, HashMap<String, Object> data) {
+		return patronRequestAuditService.addAuditEntry(ctx.getPatronRequest(), "Clean up result", data);
 	}
 
 	@Override
