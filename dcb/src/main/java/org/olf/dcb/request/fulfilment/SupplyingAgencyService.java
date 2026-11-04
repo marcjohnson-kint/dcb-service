@@ -207,10 +207,8 @@ public class SupplyingAgencyService {
 
 		return client.getRequest(hostlmsRequest)
 			.flatMap(hostLmsRequest -> {
-
 				// if the hold exists a local id will be present
-				if (hostLmsRequest != null && hostLmsRequest.getLocalId() != null) {
-
+				if (getValueOrNull(hostLmsRequest, HostLmsRequest::getLocalId) != null) {
 					// return the client to proceed with deletion
 					return Mono.just(client);
 				}
