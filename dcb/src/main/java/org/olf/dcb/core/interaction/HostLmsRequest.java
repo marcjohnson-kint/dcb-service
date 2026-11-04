@@ -1,5 +1,10 @@
 package org.olf.dcb.core.interaction;
 
+import static org.olf.dcb.utils.PropertyAccessUtils.getValueOrNull;
+
+import org.olf.dcb.core.model.PatronIdentity;
+import org.olf.dcb.core.model.SupplierRequest;
+
 import io.micronaut.core.annotation.Creator;
 import io.micronaut.serde.annotation.Serdeable;
 import lombok.AllArgsConstructor;
@@ -16,7 +21,6 @@ import io.micronaut.core.annotation.Nullable;
 @Serdeable
 @ExcludeFromGeneratedCoverageReport
 public class HostLmsRequest {
-
 	public HostLmsRequest(String localId, String status) {
 		this.localId = localId;
 		this.status = status;
@@ -66,4 +70,15 @@ public class HostLmsRequest {
 	 * This is needed so that tracking always picks up supplier holds for renewal prevention */
 	@Nullable
 	Integer requestedItemHoldCount;
+
+	public static HostLmsRequest hostLmsRequestFrom(SupplierRequest supplierRequest) {
+		final var localRequestId = getValueOrNull(supplierRequest, SupplierRequest::getLocalId);
+		final var supplierPatronId = getValueOrNull(supplierRequest, SupplierRequest::getVirtualIdentity,
+			PatronIdentity::getLocalId);
+
+		return builder()
+			.localId(localRequestId)
+			.localPatronId(supplierPatronId)
+			.build();
+	}
 }

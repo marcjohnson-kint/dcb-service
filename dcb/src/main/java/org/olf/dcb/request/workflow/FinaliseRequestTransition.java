@@ -1,5 +1,6 @@
 package org.olf.dcb.request.workflow;
 
+import static org.olf.dcb.core.interaction.HostLmsRequest.hostLmsRequestFrom;
 import static org.olf.dcb.core.model.PatronRequest.Status.CANCELLED;
 import static org.olf.dcb.core.model.PatronRequest.Status.COMPLETED;
 import static org.olf.dcb.core.model.PatronRequest.Status.FINALISED;
@@ -15,7 +16,6 @@ import java.util.Optional;
 import org.olf.dcb.core.interaction.HostLmsItem;
 import org.olf.dcb.core.interaction.HostLmsRequest;
 import org.olf.dcb.core.interaction.Patron;
-import org.olf.dcb.core.model.PatronIdentity;
 import org.olf.dcb.core.model.PatronRequest;
 import org.olf.dcb.core.model.PatronRequest.Status;
 import org.olf.dcb.core.model.PatronRequestAudit;
@@ -109,11 +109,10 @@ public class FinaliseRequestTransition implements PatronRequestStateTransition {
 			return Mono.just(putAuditData(auditData, "VirtualRequest", "No supplier request was placed"));
 		}
 
-		final var localRequestId = supplierRequest.getLocalId();
-		final var supplierPatronId = getValueOrNull(supplierRequest, SupplierRequest::getVirtualIdentity, PatronIdentity::getLocalId);
-		final var hostlmsRequest = HostLmsRequest.builder().localId(localRequestId).localPatronId(supplierPatronId).build();
+		final var hostlmsRequest = hostLmsRequestFrom(supplierRequest);
+		final var supplierHostLmsCode = getValueOrNull(supplierRequest, SupplierRequest::getHostLmsCode);
 
-		return supplyingAgencyService.getRequest(supplierRequest.getHostLmsCode(), hostlmsRequest)
+		return supplyingAgencyService.getRequest(supplierHostLmsCode, hostlmsRequest)
 			.map(request -> putAuditData(auditData,"VirtualRequest", getValueOrNull(request, HostLmsRequest::toString)))
 			.onErrorResume(error -> auditThrowableMonoWrap(auditData, "VirtualRequest", error))
 			.thenReturn(auditData);
