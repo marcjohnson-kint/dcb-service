@@ -39,16 +39,8 @@ public interface HostLmsClient
 
 	Mono<LocalRequest> updateHoldRequest(@NonNull LocalRequest localRequest);
 
-	// All implementations must understand these states and be able to translate
-	// them to
-	// local values when encountered via updateRequestStatus
-	enum CanonicalRequestState {
-		PLACED, TRANSIT;
-
-	}
 	enum CanonicalItemState {
 		AVAILABLE, TRANSIT, OFFSITE, RECEIVED, MISSING, ONHOLDSHELF, COMPLETED;
-
 	}
 
 	HostLms getHostLms();
