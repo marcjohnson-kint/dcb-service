@@ -144,15 +144,19 @@ public class SupplyingAgencyService {
 
 	private Mono<String> deleteRequest(RequestWorkflowContext context, HostLmsClient client,
 		String supplierPatronId, String localRequestId, PatronRequest patronRequest) {
+
 		final var virtualIdentity = getValueOrNull(context, RequestWorkflowContext::getPatronVirtualIdentity);
-		final var virtualLocalId = virtualIdentity.getLocalId();
-		log.debug("Deleting hold - Supplier patron ID {} and virtual local ID{}", supplierPatronId, virtualLocalId);
-		return client.deleteHold(DeleteCommand.builder()
+		final var virtualLocalId = getValueOrNull(virtualIdentity, PatronIdentity::getLocalId);
+
+		log.debug("Deleting hold - Supplier patron ID {} and virtual local ID {}", supplierPatronId, virtualLocalId);
+		final var deleteCommand = DeleteCommand.builder()
 			.requestId(localRequestId)
 			// If the original supplier patron ID is not available (Polaris), use the virtual patron's local ID to make sure we delete the hold.
-			.patronId(
-				supplierPatronId == null || supplierPatronId.isBlank() ? virtualLocalId : supplierPatronId)
-			.build()).flatMap(deleteResult -> {
+			.patronId(supplierPatronId == null || supplierPatronId.isBlank() ? virtualLocalId : supplierPatronId)
+			.build();
+
+		return client.deleteHold(deleteCommand)
+			.flatMap(deleteResult -> {
 			// There are different success variations that we need to handle for some LMS
 			// i.e. if we've not been able to delete the hold but we successfully cancelled it instead, that's worth noting
 			// Polaris is the primary example: it doesn't always let us delete the hold and then it stops us deleting the item
